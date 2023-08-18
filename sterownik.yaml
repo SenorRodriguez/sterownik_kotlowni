@@ -1,9 +1,7 @@
 esphome:
   name: kotlownia
   on_boot:
-  - state_machine.set:
-      id: sm1
-      state: IDLE
+  - state_machine.transition: IDLE
   - switch.turn_off: stove_relay
   - switch.turn_off: wh_relay
 
@@ -65,8 +63,8 @@ display:
     eight_bit_color: true
     update_interval: 1s
     lambda: |-
-      it.printf(0, 0, id(consolas),  "Stan: %s", id(sm1).current_state().c_str());
-      it.printf(0, 9, id(consolas),  "Tryb: %s", "Zima");
+      it.printf(0, 0, id(consolas),  "Stan: %s", id(current_state).c_str());
+      it.printf(0, 9, id(consolas),  "Tryb: %s", id(mode).c_str());
       it.printf(0, 18, id(consolas), id(light_green), "------- Bufor --------");
       it.printf(0, 27, id(consolas), " %12s %.1f °C", "Gora:", id(buffer_temp_top).state);
       it.printf(0, 36, id(consolas), " %12s %.1f °C", "Dol:", id(buffer_temp_bottom).state);
@@ -84,9 +82,12 @@ display:
       it.printf(0, 144, id(consolas), " %13s %u", "Test:", random(10));
 
 globals:
-  - id: current_state
+  - id: current_state #maszyna stanów nie mam pola a'la opis, więc ta zmienna jest tylko po to, żeby wyświetlać stan maszyny "po polsku"
     type: std::string
-    initial_value: '"initial"'
+    initial_value: '"INIT"'
+  - id: mode
+    type: std::string
+    initial_value: '"LATO"'
 
 external_components:
   - source: 
@@ -96,6 +97,7 @@ external_components:
 state_machine:
   - name: "Maszyna stanów kotłowni"
     id: "sm1"
+    initial_state: IDLE
     states: 
     - name: IDLE
       on_enter:
@@ -112,21 +114,41 @@ state_machine:
         - switch.turn_on: stove_relay
         - switch.turn_off: wh_relay
     - name: BUFFER_FULL
+      on_enter:
+        if:
+          condition: # jeśli ustawiona jest flaga DOGRZEWANIE_CWU
+            lambda: 'return id(WH_temp_bottom).state >= id(WH_temp_target).state;'
+          then:
+            - state_machine.transition: WH_TEMP_BELOW_MIN
     - name: WH_LOADING
       on_enter:
         - lambda: |-
            id(current_state) = "GRZANIE CWU";
         - switch.turn_on: stove_relay
         - switch.turn_on: wh_relay
-    - name: WF_FULL
-    - name: WH_TOP_UP
+    - name: WH_FULL
       on_enter:
         - lambda: |-
-           id(current_state) = "DOGRZEWANIE CWU";
-        - switch.turn_on: stove_relay
-        - switch.turn_on: wh_relay
-    initial_state: IDLE
-
+            id(current_state) = "GRZANIE CWU";
+        - if:
+            condition:
+              - lambda: 'return 1;' # tymczasowo, jeśli temperatura bufora piniżej minimum to ...
+            then:
+              - state_machine.transition: BUFFER_LOADING
+            else:
+              - state_machine.transition: IDLE 
+    - name: WH_TOP_UP #dogrzewanie cwu
+      on_enter:
+        - lambda: |-
+            id(current_state) = "DOGRZEWANIE CWU";
+        - if:
+            condition: 
+              - lambda: 'return 1;' #tymczasowo. Zmienić na jeżeli temperatura dołu zasobnika >= zadanej
+            then:
+              - state_machine.transition: IDLE
+            else:
+              - switch.turn_on: stove_relay
+              - switch.turn_on: wh_relay
     inputs:
       - name: WH_TEMP_BELOW_MIN
         transitions:
@@ -134,9 +156,9 @@ state_machine:
           - BUFFER_LOADING -> WH_LOADING
       - name: WH_TEMP_REACHED
         transitions:
-          - WH_LOADING -> WF_FULL
+          - WH_LOADING -> WH_FULL
     
-          - WH_TOP_UP -> WF_FULL
+          - WH_TOP_UP -> WH_FULL
     
       - name: BUFFER_TEMP_BELOW_MIN
         transitions:
@@ -152,7 +174,8 @@ number:
     restore_value: True
     initial_value: 75
     optimistic: True
-    min_value: 50
+    #min_value: 50
+    min_value: 20
     max_value: 80
     step: 1
   - platform: template
@@ -161,7 +184,8 @@ number:
     optimistic: True
     restore_value: True
     initial_value: 35
-    min_value: 30
+    #min_value: 30
+    min_value: 20
     max_value: 45
     step: 1
   - platform: template
@@ -170,7 +194,8 @@ number:
     restore_value: True
     initial_value: 45
     optimistic: True
-    min_value: 40
+    #min_value: 40
+    min_value: 20
     max_value: 50
     step: 1 
   - platform: template
@@ -179,7 +204,8 @@ number:
     optimistic: True
     restore_value: True
     initial_value: 35
-    min_value: 30
+    #min_value: 30
+    min_value: 20
     max_value: 45
     step: 1
 
@@ -189,6 +215,7 @@ dallas:
   
 sensor:
   - platform: dallas
+    accuracy_decimals: 1
     index: 0
     name: "Bufor_gora"
     id: "buffer_temp_top"
@@ -200,6 +227,7 @@ sensor:
           - state_machine.transition: BUFFER_TEMP_BELOW_MIN
   #####
   - platform: dallas
+    accuracy_decimals: 1
     index: 1 
     name: "Bufor_dol"
     id: "buffer_temp_bottom"
@@ -208,8 +236,9 @@ sensor:
         condition: # jeśli tempetatura na dole BUFORA osiognie temperaturę zadaną
           lambda: 'return id(buffer_temp_bottom).state >= id(buffer_temp_target).state;'
         then:
-          - state_machine.transition: BUFFER_FULL
+          - state_machine.transition: BUFFER_TEMP_REACHED
   - platform: dallas
+    accuracy_decimals: 1
     index: 2 
     name: "CWU_dol"
     id: "WH_temp_bottom"
@@ -218,9 +247,10 @@ sensor:
         condition: # jeśli tempetatura na dole ZASOBNIKA osiognie temperaturę zadaną
           lambda: 'return id(WH_temp_bottom).state >= id(WH_temp_target).state;'
         then:
-          - state_machine.transition: WF_FULL
+          - state_machine.transition: WH_TEMP_REACHED
     
   - platform: dallas
+    accuracy_decimals: 1
     index: 3 
     name: "CWU_gora"
     id: "WH_temp_top"
@@ -236,9 +266,28 @@ switch:
     pin: GPIO12
     name: "Włączanie kotła"
     id: stove_relay
-
-    
   - platform: gpio
     pin: GPIO13
     name: "Grzanie CWU"
     id: wh_relay #WH = water heater
+  - platform: gpio
+    pin: GPIO14
+    name: "Cyrkulacja CWU"
+    id: hot_water_pump_relay
+  - platform: template
+    name: "Tryb (Lato/Zima)"
+    id: mode_switch
+    turn_on_action: 
+      - globals.set:
+          id: mode
+          value: '"ZIMA"'
+      - switch.template.publish:
+          id: mode_switch
+          state: !lambda 'return true;'
+    turn_off_action:
+      - globals.set:
+            id: mode
+            value: '"LATO"'
+      - switch.template.publish:
+          id: mode_switch
+          state: !lambda 'return false;'  
