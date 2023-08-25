@@ -1,7 +1,7 @@
 esphome:
   name: kotlownia
   on_boot:
-  - state_machine.transition: IDLE
+  - state_machine.set: IDLE
   - switch.turn_off: stove_relay
   - switch.turn_off: wh_relay
 
@@ -12,6 +12,7 @@ esp32:
 #  baud_rate: 115200
 # Enable logging
 logger:
+  level: WARN
 
 # Enable Home Assistant API
 api:
@@ -52,10 +53,10 @@ color:
 display:
   - platform: st7735
     model: "INITR_18BLACKTAB"
-    cs_pin: GPIO2    #  ->CS
-    dc_pin: GPIO5    #  ->A0  
+    cs_pin: GPIO21    #  D21->CS
+    dc_pin: GPIO22    #  D5->A0  
     #reset_pin: D6 #  ->RESET
-    rotation: 0
+    rotation: 180
     device_width: 128
     device_height: 160
     col_start: 0
@@ -88,6 +89,9 @@ globals:
   - id: mode
     type: std::string
     initial_value: '"LATO"'
+  - id: top_up_active
+    type: bool  
+    initial_value: 'true'
 
 external_components:
   - source: 
@@ -101,6 +105,9 @@ state_machine:
     states: 
     - name: IDLE
       on_enter:
+        - logger.log: 
+            format: "Entering IDLE state"
+            level: WARN
         - globals.set:
             id: current_state
             value: '"BEZCZYNNY"'
@@ -108,6 +115,9 @@ state_machine:
         - switch.turn_off: wh_relay
     - name: BUFFER_LOADING
       on_enter:
+        - logger.log: 
+            format: "Entering BUFFER_LOADING state"
+            level: WARN
         - globals.set:
             id: current_state
             value: '"LADOWANIE BUFORA"'
@@ -115,37 +125,62 @@ state_machine:
         - switch.turn_off: wh_relay
     - name: BUFFER_FULL
       on_enter:
-        if:
-          condition: # jeśli ustawiona jest flaga DOGRZEWANIE_CWU
-            lambda: 'return id(WH_temp_bottom).state >= id(WH_temp_target).state;'
-          then:
-            - state_machine.transition: WH_TEMP_BELOW_MIN
+        - logger.log: 
+            format: "Entering BUFFER_FULL state"
+            level: WARN
+        - globals.set:
+            id: current_state
+            value: '"BUFOR NAŁADOWANY"'
+        - if:
+            condition: # jeśli ustawiona jest flaga DOGRZEWANIE_CWU
+              lambda: 'return id(top_up_active) == true;'
+            then:
+              - state_machine.transition: TOP_UP
+            else:
+              - state_machine.set: IDLE
     - name: WH_LOADING
       on_enter:
+        - logger.log: 
+            format: "Entering IDLE state"
+            level: WARN
+        - globals.set:
+            id: current_state
+            value: '"LADOWANIE ZASOBNIKA"'
         - lambda: |-
            id(current_state) = "GRZANIE CWU";
         - switch.turn_on: stove_relay
         - switch.turn_on: wh_relay
-    - name: WH_FULL
+    - name: WH_FULL 
+      # stan przejściowy w którym sprawdzamy, czy trzeba ładować bufor
+      # w zasadzie możnaby ten stan pominąć i przejść od razu do IDLE po czym w razie potrzeby do BUFFER_LOADING ale mogłoby to spowodować chwilowe rozwarcie przekaźnika. 
+      # Chuj wie, jak kocioł się zachowa
       on_enter:
+        - logger.log: 
+            format: "Entering WH_FULL state"
+            level: WARN
         - lambda: |-
-            id(current_state) = "GRZANIE CWU";
+            id(current_state) = "ZASOBNIK PELNY";
         - if:
             condition:
-              - lambda: 'return 1;' # tymczasowo, jeśli temperatura bufora piniżej minimum to ...
+              #- lambda: 'return id(buffer_temp_top).state < id(buffer_temp_min).state;'
+              #debug
+              - lambda: 'return id(buffer_temp_top_debug).state < id(buffer_temp_min).state;'
             then:
-              - state_machine.transition: BUFFER_LOADING
+              - state_machine.set: BUFFER_LOADING
             else:
-              - state_machine.transition: IDLE 
-    - name: WH_TOP_UP #dogrzewanie cwu
+              - state_machine.set: IDLE 
+    - name: WH_TOP_UP #dogrzewanie cwu. po naładowaniu bufora dogrzewamy zasobnik, żeby uniknąć niepotrzebnego wygaszania kotła
       on_enter:
+        - logger.log: 
+            format: "Entering WH_TOP_UP state"
+            level: WARN
         - lambda: |-
             id(current_state) = "DOGRZEWANIE CWU";
         - if:
             condition: 
               - lambda: 'return 1;' #tymczasowo. Zmienić na jeżeli temperatura dołu zasobnika >= zadanej
             then:
-              - state_machine.transition: IDLE
+              - state_machine.set: IDLE
             else:
               - switch.turn_on: stove_relay
               - switch.turn_on: wh_relay
@@ -157,19 +192,23 @@ state_machine:
       - name: WH_TEMP_REACHED
         transitions:
           - WH_LOADING -> WH_FULL
-    
           - WH_TOP_UP -> WH_FULL
-    
       - name: BUFFER_TEMP_BELOW_MIN
         transitions:
           - IDLE -> BUFFER_LOADING
       - name: BUFFER_TEMP_REACHED
         transitions:
           - BUFFER_LOADING -> BUFFER_FULL
+      - name: TOP_UP
+        transitions:
+          - BUFFER_FULL -> WH_LOADING
+      - name: GO_IDLE
+        transitions:
+          - BUFFER_FULL -> IDLE
           
 number:
   - platform: template
-    name: "Temperatura zadana bufora"
+    name: "T. zadana bufora"
     id: buffer_temp_target
     restore_value: True
     initial_value: 75
@@ -179,7 +218,7 @@ number:
     max_value: 80
     step: 1
   - platform: template
-    name: "Temperatura minimalna bufora"
+    name: "T. minimalna bufora"
     id: "buffer_temp_min"
     optimistic: True
     restore_value: True
@@ -189,7 +228,7 @@ number:
     max_value: 45
     step: 1
   - platform: template
-    name: "Temperatura zadana CWU"
+    name: "T. zadana CWU"
     id: "WH_temp_target"
     restore_value: True
     initial_value: 45
@@ -199,12 +238,45 @@ number:
     max_value: 50
     step: 1 
   - platform: template
-    name: "Temperatura minimalna CWU"
+    name: "T. minimalna CWU"
     id: "WH_temp_min"
     optimistic: True
     restore_value: True
     initial_value: 35
     #min_value: 30
+    min_value: 20
+    max_value: 45
+    step: 1
+  # wszystko poniżej na potrzeby debugowania. ustawiam temperatuty ręcznie
+  - platform: template
+    name: "T.bufora góra"
+    id: "buffer_temp_top_debug"
+    optimistic: True
+    initial_value: 35
+    min_value: 20
+    max_value: 85
+    step: 1
+  - platform: template
+    name: "T.bufora dół"
+    id: "buffer_temp_bottom_debug"
+    optimistic: True
+    initial_value: 35
+    min_value: 20
+    max_value: 85
+    step: 1
+  - platform: template
+    name: "T. zasobnika góra"
+    id: "WH_temp_top_debug"
+    optimistic: True
+    initial_value: 35
+    min_value: 20
+    max_value: 45
+    step: 1
+  - platform: template
+    name: "T.zasobnika dól"
+    id: "WH_temp_bottom_debug"
+    optimistic: True
+    initial_value: 35
     min_value: 20
     max_value: 45
     step: 1
@@ -222,8 +294,10 @@ sensor:
     on_value:
       if:
         condition: # jeśli temperatura na górze BUFORA spadnie poniżej minimalnej
-          lambda: 'return id(buffer_temp_top).state < id(buffer_temp_min).state;'
-        then: 
+          #lambda: 'return id(buffer_temp_top).state < id(buffer_temp_min).state;'
+          #debug
+          lambda: 'return id(buffer_temp_top_debug).state < id(buffer_temp_min).state;'
+        then:
           - state_machine.transition: BUFFER_TEMP_BELOW_MIN
   #####
   - platform: dallas
@@ -234,7 +308,9 @@ sensor:
     on_value:
       if:
         condition: # jeśli tempetatura na dole BUFORA osiognie temperaturę zadaną
-          lambda: 'return id(buffer_temp_bottom).state >= id(buffer_temp_target).state;'
+          #lambda: 'return id(buffer_temp_bottom).state >= id(buffer_temp_target).state;'
+          #debug
+          lambda: 'return id(buffer_temp_bottom_debug).state >= id(buffer_temp_target).state;'
         then:
           - state_machine.transition: BUFFER_TEMP_REACHED
   - platform: dallas
@@ -245,7 +321,9 @@ sensor:
     on_value:
       if:
         condition: # jeśli tempetatura na dole ZASOBNIKA osiognie temperaturę zadaną
-          lambda: 'return id(WH_temp_bottom).state >= id(WH_temp_target).state;'
+          #lambda: 'return id(WH_temp_bottom).state >= id(WH_temp_target).state;'
+          #debug
+          lambda: 'return id(WH_temp_bottom_debug).state >= id(WH_temp_target).state;'
         then:
           - state_machine.transition: WH_TEMP_REACHED
     
@@ -257,23 +335,28 @@ sensor:
     on_value:
       if:
         condition: # jeśli temperatura na górze ZASOBNIKA spadnie poniżej minimalnej dla CWU
-          lambda: 'return id(WH_temp_top).state < id(WH_temp_min).state;' #może it.(...)?
+          #lambda: 'return id(WH_temp_top).state < id(WH_temp_min).state;'
+          #debug
+          lambda: 'return id(WH_temp_top_debug).state < id(WH_temp_min).state;'
         then: 
           - state_machine.transition: WH_TEMP_BELOW_MIN
 
 switch:
   - platform: gpio
-    pin: GPIO12
+    pin: GPIO13
     name: "Włączanie kotła"
     id: stove_relay
-  - platform: gpio
-    pin: GPIO13
-    name: "Grzanie CWU"
-    id: wh_relay #WH = water heater
+    inverted: true
   - platform: gpio
     pin: GPIO14
+    name: "Grzanie CWU"
+    id: wh_relay #WH = water heater
+    inverted: true
+  - platform: gpio
+    pin: GPIO27
     name: "Cyrkulacja CWU"
     id: hot_water_pump_relay
+    inverted: true
   - platform: template
     name: "Tryb (Lato/Zima)"
     id: mode_switch
@@ -290,4 +373,21 @@ switch:
             value: '"LATO"'
       - switch.template.publish:
           id: mode_switch
+          state: !lambda 'return false;'  
+  - platform: template
+    name: "Dogrzewanie CWU"
+    id: top_up_switch
+    turn_on_action: 
+      - globals.set:
+          id: top_up_active
+          value: "true"
+      - switch.template.publish:
+          id: top_up_switch
+          state: !lambda 'return true;'
+    turn_off_action:
+      - globals.set:
+            id: top_up_active
+            value: "false"
+      - switch.template.publish:
+          id: top_up_switch
           state: !lambda 'return false;'  
