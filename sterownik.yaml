@@ -69,17 +69,17 @@ display:
       it.printf(0, 18, id(consolas), id(light_green), "------- Bufor --------");
       it.printf(0, 27, id(consolas), " %12s %.1f °C", "Gora:", id(buffer_temp_top).state);
       it.printf(0, 36, id(consolas), " %12s %.1f °C", "Dol:", id(buffer_temp_bottom).state);
-      it.printf(0, 45, id(consolas), " %12s %.1f °C", "T docelowa:", id(buffer_temp_target).state);
+      it.printf(0, 45, id(consolas), " %12s %.1f °C", "T zadana:", id(buffer_temp_target).state);
       it.printf(0, 54, id(consolas), " %12s %.1f °C", "T minimalna:", id(buffer_temp_min).state);
       it.printf(0, 63, id(consolas), id(light_green), "-------- CWU ---------");
-      it.printf(0, 72, id(consolas), " %12s %.1f °C", "Gora:", id(WH_temp_top).state);
-      it.printf(0, 81, id(consolas), " %12s %.1f °C", "Dol:", id(WH_temp_bottom).state);
-      it.printf(0, 90, id(consolas), " %12s %.1f °C", "T docelowa:", id(WH_temp_target).state);
-      it.printf(0, 99, id(consolas), " %12s %.1f °C", "T minimalna:", id(WH_temp_min).state);
-      it.printf(0, 108, id(consolas), " ");
-      it.printf(0, 117, id(consolas), " %13s %s", "Kociol:", id(stove_relay).state==true?"ON":"OFF");
-      it.printf(0, 126, id(consolas), " %13s %s", "Grzanie CWU:", id(wh_relay).state==true?"ON":"OFF");
-      it.printf(0, 135, id(consolas), " %13s %s", "Pompa CWU:", true==true?"ON":"OFF");
+      it.printf(0, 72, id(consolas), " %12s %.1f °C", "Temperatura:", id(WH_temp).state);
+      it.printf(0, 81, id(consolas), " %12s %.1f °C", "T zadana:", id(WH_temp_target).state); 
+      it.printf(0, 90, id(consolas), " %12s %.1f °C", "T minimalna:", id(WH_temp_min).state);
+      it.printf(0, 99, id(consolas), " ");
+      it.printf(0, 108, id(consolas), " %13s %s", "Kociol:", id(stove_relay).state==true?"ON":"OFF");
+      it.printf(0, 117, id(consolas), " %13s %s", "Grzanie CWU:", id(wh_relay).state==true?"ON":"OFF");
+      it.printf(0, 126, id(consolas), " %13s %s", "Pompa CWU:", true==true?"ON":"OFF");
+      it.printf(0, 135, id(consolas), " %13s %s", "Dogrzew. CWU :", id(top_up_active)==true?"ON":"OFF")  ;
       it.printf(0, 144, id(consolas), " %13s %u", "Test:", random(10));
 
 globals:
@@ -132,6 +132,11 @@ state_machine:
       on_enter:
         - switch.turn_on: stove_relay
         - switch.turn_on: wh_relay
+    - name: WH_LOADING_INTERRUPTED #do tego stanu przechodzi, gdy trzeba podgrzać CWU w trakcie grzania bufora. Normalnie po nagrzniu CWU przeszedłbby w IDLE
+                                   #ale z tego stanu wraca do grzania bufora
+      on_enter:
+        - switch.turn_on: stove_relay
+        - switch.turn_on: wh_relay
     - name: WH_FULL #ciągle nie jestem pewien, czy ten stan jest potrzebny. W teorii ma zapobiec chwilowemu wyłaczeniu przekaźnika, bo nie wiadomo jak się wtedy piec zachowa
                     #cholera wie, czy nie zacznie sie wygaszać, daję sobie 2,5 czasu na ewentualny trigger z dallas przejście do grzania bufora
       on_enter:
@@ -141,7 +146,7 @@ state_machine:
       on_enter:
         - if:
             condition: 
-              - lambda: 'return 1;' #tymczasowo. Zmienić na jeżeli temperatura dołu zasobnika >= zadanej
+              - lambda: 'return id(WH_temp_debug).state >= id(WH_temp_target).state;' 
             then:
               - state_machine.transition: GO_IDLE
             else:
@@ -151,11 +156,12 @@ state_machine:
       - name: WH_TEMP_BELOW_MIN
         transitions:
           - IDLE -> WH_LOADING
-          - BUFFER_LOADING -> WH_LOADING
+          - BUFFER_LOADING -> WH_LOADING_INTERRUPTED
       - name: WH_TEMP_REACHED
         transitions:
           - WH_LOADING -> WH_FULL
           - WH_TOP_UP -> WH_FULL
+          - WH_LOADING_INTERRUPTED -> BUFFER_LOADING
       - name: BUFFER_TEMP_BELOW_MIN
         transitions:
           - IDLE -> BUFFER_LOADING
@@ -165,7 +171,7 @@ state_machine:
           - BUFFER_LOADING -> BUFFER_FULL
       - name: TOP_UP
         transitions: 
-          BUFFER_LOADING -> WH_LOADING
+          BUFFER_FULL -> WH_LOADING
       - name: GO_IDLE
         transitions:
           - BUFFER_FULL -> IDLE
@@ -232,16 +238,8 @@ number:
     max_value: 85
     step: 1
   - platform: template
-    name: "T. zasobnika góra"
-    id: "WH_temp_top_debug"
-    optimistic: True
-    initial_value: 35
-    min_value: 20
-    max_value: 45
-    step: 1
-  - platform: template
-    name: "T.zasobnika dól"
-    id: "WH_temp_bottom_debug"
+    name: "Temp. zasobnika"
+    id: "WH_temp_debug"
     optimistic: True
     initial_value: 35
     min_value: 20
@@ -282,31 +280,20 @@ sensor:
           - state_machine.transition: BUFFER_TEMP_REACHED
   - platform: dallas
     accuracy_decimals: 1
-    index: 2 
-    name: "CWU_dol"
-    id: "WH_temp_bottom"
+    index: 2
+    name: "CWU"
+    id: "WH_temp"
     on_value:
-      if:
-        condition: # jeśli tempetatura na dole ZASOBNIKA osiognie temperaturę zadaną
-          #lambda: 'return id(WH_temp_bottom).state >= id(WH_temp_target).state;'
-          #debug
-          lambda: 'return id(WH_temp_bottom_debug).state >= id(WH_temp_target).state;'
-        then:
-          - state_machine.transition: WH_TEMP_REACHED
-    
-  - platform: dallas
-    accuracy_decimals: 1
-    index: 3 
-    name: "CWU_gora"
-    id: "WH_temp_top"
-    on_value:
-      if:
-        condition: # jeśli temperatura na górze ZASOBNIKA spadnie poniżej minimalnej dla CWU
-          #lambda: 'return id(WH_temp_top).state < id(WH_temp_min).state;'
-          #debug
-          lambda: 'return id(WH_temp_top_debug).state < id(WH_temp_min).state;'
-        then: 
-          - state_machine.transition: WH_TEMP_BELOW_MIN
+      - if:
+          condition: #jeśli temperatura zasobnika poniżej dolnego limitu
+            lambda: 'return id(WH_temp_debug).state < id(WH_temp_min).state;'
+          then: 
+            - state_machine.transition: WH_TEMP_BELOW_MIN
+      - if:
+          condition:
+            lambda: 'return id(WH_temp_debug).state >= id(WH_temp_target).state;'
+          then:
+            - state_machine.transition: WH_TEMP_REACHED
 
 switch:
   - platform: gpio
