@@ -122,7 +122,7 @@ state_machine:
     - name: BUFFER_FULL
       on_enter:
         - if:
-            condition: # jeśli ustawiona jest flaga DOGRZEWANIE_CWU. nie sprawdzam temeraatury zasobnika, najwyżej od zazu się wyłaczy
+            condition: # jeśli ustawiona jest flaga DOGRZEWANIE_CWU. nie sprawdzam temeraatury zasobnika, najwyżej od rezu się wyłaczy
               lambda: 'return id(top_up_active) == true;'
             then:
               - state_machine.transition: TOP_UP
@@ -132,16 +132,11 @@ state_machine:
       on_enter:
         - switch.turn_on: stove_relay
         - switch.turn_on: wh_relay
-    - name: WH_FULL #ciągle nie jestem pewien, czy ten stan jest potrzebny
+    - name: WH_FULL #ciągle nie jestem pewien, czy ten stan jest potrzebny. W teorii ma zapobiec chwilowemu wyłaczeniu przekaźnika, bo nie wiadomo jak się wtedy piec zachowa
+                    #cholera wie, czy nie zacznie sie wygaszać, daję sobie 2,5 czasu na ewentualny trigger z dallas przejście do grzania bufora
       on_enter:
-        - switch.turn_off: wh_relay
-        - if:
-            condition: # jeśli temperatura na górze BUFORA jest powyżej minimalnej 
-          #lambda: 'return id(buffer_temp_top).state < id(buffer_temp_min).state;'
-          #debug
-             lambda: 'return id(buffer_temp_top_debug).state > id(buffer_temp_min).state;'
-           then:
-            - state_machine.transition: GO_IDLE
+        - delay: 2500ms
+        - state_machine.transition: GO_IDLE
     - name: WH_TOP_UP #dogrzewanie cwu. po naładowaniu bufora dogrzewamy zasobnik, żeby uniknąć niepotrzebnego wygaszania kotła
       on_enter:
         - if:
@@ -164,6 +159,7 @@ state_machine:
       - name: BUFFER_TEMP_BELOW_MIN
         transitions:
           - IDLE -> BUFFER_LOADING
+          - WH_FULL -> BUFFER_LOADING
       - name: BUFFER_TEMP_REACHED
         transitions:
           - BUFFER_LOADING -> BUFFER_FULL
