@@ -146,7 +146,7 @@ state_machine:
       on_enter:
         - if:
             condition: 
-              - lambda: 'return id(WH_temp_debug).state >= id(WH_temp_target).state;' 
+              - lambda: 'return id(WH_temp).state >= id(WH_temp_target).state;' 
             then:
               - state_machine.transition: GO_IDLE
             else:
@@ -220,31 +220,6 @@ number:
     min_value: 20
     max_value: 45
     step: 1
-  # wszystko poniżej na potrzeby debugowania. ustawiam temperatuty ręcznie
-  - platform: template
-    name: "T.bufora góra"
-    id: "buffer_temp_top_debug"
-    optimistic: True
-    initial_value: 35
-    min_value: 20
-    max_value: 85
-    step: 1
-  - platform: template
-    name: "T.bufora dół"
-    id: "buffer_temp_bottom_debug"
-    optimistic: True
-    initial_value: 35
-    min_value: 20
-    max_value: 85
-    step: 1
-  - platform: template
-    name: "Temp. zasobnika"
-    id: "WH_temp_debug"
-    optimistic: True
-    initial_value: 35
-    min_value: 20
-    max_value: 45
-    step: 1
 
 dallas:
   - pin: GPIO19
@@ -261,7 +236,7 @@ sensor:
         condition: # jeśli temperatura na górze BUFORA spadnie poniżej minimalnej
           #lambda: 'return id(buffer_temp_top).state < id(buffer_temp_min).state;'
           #debug
-          lambda: 'return id(buffer_temp_top_debug).state < id(buffer_temp_min).state;'
+          lambda: 'return id(buffer_temp_top).state < id(buffer_temp_min).state;'
         then:
           - state_machine.transition: BUFFER_TEMP_BELOW_MIN
   #####
@@ -275,7 +250,7 @@ sensor:
         condition: # jeśli tempetatura na dole BUFORA osiognie temperaturę zadaną
           #lambda: 'return id(buffer_temp_bottom).state >= id(buffer_temp_target).state;'
           #debug
-          lambda: 'return id(buffer_temp_bottom_debug).state >= id(buffer_temp_target).state;'
+          lambda: 'return id(buffer_temp_bottom).state >= id(buffer_temp_target).state;'
         then:
           - state_machine.transition: BUFFER_TEMP_REACHED
   - platform: dallas
@@ -286,12 +261,12 @@ sensor:
     on_value:
       - if:
           condition: #jeśli temperatura zasobnika poniżej dolnego limitu
-            lambda: 'return id(WH_temp_debug).state < id(WH_temp_min).state;'
+            lambda: 'return id(WH_temp).state < id(WH_temp_min).state;'
           then: 
             - state_machine.transition: WH_TEMP_BELOW_MIN
       - if:
           condition:
-            lambda: 'return id(WH_temp_debug).state >= id(WH_temp_target).state;'
+            lambda: 'return id(WH_temp).state >= id(WH_temp_target).state;'
           then:
             - state_machine.transition: WH_TEMP_REACHED
 
