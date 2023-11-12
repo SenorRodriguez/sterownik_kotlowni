@@ -80,7 +80,7 @@ display:
       it.printf(0, 108, id(consolas), " %13s %s", "Kociol:", id(stove_relay).state==true?"ON":"OFF");
       it.printf(0, 117, id(consolas), " %13s %s", "Grzanie CWU:", id(wh_relay).state==true?"ON":"OFF");
       it.printf(0, 126, id(consolas), " %13s %s", "Pompa CWU:", true==true?"ON":"OFF");
-      it.printf(0, 135, id(consolas), " %13s %s", "Dogrzew. CWU :", id(top_up_active)==true?"ON":"OFF")  ;
+      it.printf(0, 135, id(consolas), " %13s %s", "Dogrzewanie :", id(top_up_active)==true?"ON":"OFF")  ;
       it.printf(0, 144, id(consolas), " %13s %s", "WiFi:", id(wifi_id).is_connected()==true?"Polaczono":"Blad!");
 
 globals:
@@ -167,6 +167,7 @@ state_machine:
               - state_machine.transition: GO_IDLE
             else:
               - switch.turn_on: stove_relay
+              - switch.turn_off: wh_relay
     inputs:
       - name: WH_TEMP_BELOW_MIN
         transitions:
