@@ -173,6 +173,7 @@ state_machine:
         transitions:
           - IDLE -> WH_LOADING
           - BUFFER_LOADING -> WH_LOADING_INTERRUPTED
+          - BUFFER_TOP_UP -> WH_LOADING_INTERRUPTED 
       - name: WH_TEMP_REACHED
         transitions:
           - WH_LOADING -> WH_FULL
