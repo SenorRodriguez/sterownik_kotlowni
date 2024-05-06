@@ -4,6 +4,9 @@ esphome:
   - state_machine.set: IDLE
   - switch.turn_off: stove_relay
   - switch.turn_off: wh_relay
+  - logger.log:
+      format: "FW VERSION: 0.1"
+      level: WARN
 
 esp32:
   board: esp32dev
@@ -142,11 +145,26 @@ state_machine:
                     #cholera wie, czy nie zacznie sie wygaszać, daję sobie 2,5 czasu na ewentualny trigger z dallas przejście do grzania bufora
       on_enter:
         - if:
-            condition: # jeśli ustawiona jest flaga DOGRZEWANIE_CWU. nie sprawdzam temeraatury zasobnika, najwyżej od rezu się wyłaczy
-              lambda: 'return id(top_up_active);'
+            condition:
+              lambda: 'return id(mode) == "LATO";'
+            then:
+              - logger.log:
+                  format: ""
+                  level: WARN
+              - state_machine.transition: GO_IDLE
+        - if:
+            condition:
+              and:
+                - lambda: 'return id(mode) == "ZIMA";'
+                - lambda: 'return id(top_up_active);'
             then:
               - state_machine.transition: TOP_UP
-            else:
+        - if:
+            condition:
+              and:
+                - lambda: 'return id(mode) == "ZIMA";'
+                - lambda: 'return ~id(top_up_active);'
+            then:
               - state_machine.transition: GO_IDLE
     - name: WH_TOP_UP #dogrzewanie cwu. po naładowaniu bufora dogrzewamy zasobnik, żeby uniknąć niepotrzebnego wygaszania kotła
       on_enter:
@@ -250,7 +268,9 @@ sensor:
     on_value:
       if:
         condition: # jeśli temperatura na górze BUFORA spadnie poniżej minimalnej
-          lambda: 'return id(buffer_temp_top).state < id(buffer_temp_min).state;'
+          and:
+            - lambda: 'return id(buffer_temp_top).state < id(buffer_temp_min).state;'
+            - lambda: 'return id(mode) == "ZIMA";'
         then:
           - state_machine.transition: BUFFER_TEMP_BELOW_MIN
   #####
@@ -313,6 +333,10 @@ switch:
       - switch.template.publish:
           id: mode_switch
           state: !lambda 'return true;'
+      - logger.log:
+          format: "Mode: %s"
+          args: [ 'id(mode).c_str()']
+          level: WARN
     turn_off_action:
       - globals.set:
             id: mode
@@ -320,6 +344,10 @@ switch:
       - switch.template.publish:
           id: mode_switch
           state: !lambda 'return false;'  
+      - logger.log:
+          format: "Mode: %s"
+          args: [ 'id(mode).c_str()']
+          level: WARN
   - platform: template
     name: "Dogrzewanie CWU"
     id: top_up_switch
