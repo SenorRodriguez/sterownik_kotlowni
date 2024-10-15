@@ -1,11 +1,11 @@
 esphome:
-  name: sterownik-kotla
+  name: sterownik_kotla_v2
   on_boot:
   - state_machine.set: IDLE
   - switch.turn_off: stove_relay
   - switch.turn_off: wh_relay
   - logger.log:
-      format: "FW VERSION: 0.1"
+      format: "FW VERSION: 0.2"
       level: WARN
 
 esp32:
@@ -304,22 +304,22 @@ sensor:
 
 switch:
   - platform: gpio
-    pin: GPIO13
+    pin: GPIO23
     name: "Włączanie kotła"
     id: stove_relay
     inverted: true
   - platform: gpio
-    pin: GPIO14
+    pin: GPIO32
     name: "Grzanie CWU"
     id: wh_relay #WH = water heater
     inverted: true
   - platform: gpio
-    pin: GPIO27
+    pin: GPIO33
     name: "Cyrkulacja CWU"
     id: hot_water_pump_relay
     inverted: true
   - platform: gpio
-    pin: GPIO26
+    pin: GPIO25
     name: "Pompa obiegowa"
     id: circulation_pump_relay 
     inverted: true
