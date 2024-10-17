@@ -20,20 +20,22 @@ logger:
 
 # Enable Home Assistant API
 api:
-  password: ""
+  encryption:
+    key: "skR9b3kg8faCvxnHIbOD6wVlXalUKTOzlHtLhpnUOA8="
 
 ota:
-  password: ""
+  - platform: esphome
+    password: "28cf72c4b1505ff8519fee3d866a9d54"
 
 packages:
   wifi: !include wifi.yaml
 
-  
+
 
 captive_portal:
 #//
 spi:
-  clk_pin: GPIO18    #  sck 
+  clk_pin: GPIO17 #  sck 
   mosi_pin: GPIO23   #  mosi -> SDA(Serial DAta)
   
 font:
@@ -55,18 +57,20 @@ color:
     blue: 25%
     white: 0%
 display:
-  - platform: st7735
-    model: "INITR_18BLACKTAB"
+  - platform: ili9xxx
+    model: "ST7735"
     cs_pin: GPIO21    #  D21->CS
     dc_pin: GPIO22    #  D5->A0  
+    invert_colors: false
     #reset_pin: D6 #  ->RESET
-    rotation: 180
-    device_width: 128
-    device_height: 160
-    col_start: 0
-    row_start: 0
-    eight_bit_color: true
-    update_interval: 1s
+    #rotation: 180
+    #device_width: 128
+    #device_height: 160x
+    #col_start: 0
+    #row_start: 0
+    #eight_bit_color: true
+    #show_test_card: true
+    #update_interval: 1s
     lambda: |-
       it.printf(0, 0, id(consolas),  "Stan: %s", id(current_state).state.c_str());
       it.printf(0, 9, id(consolas),  "Tryb: %s", id(mode).c_str());
@@ -142,7 +146,7 @@ state_machine:
         - switch.turn_on: stove_relay
         - switch.turn_on: wh_relay
     - name: WH_FULL #ciągle nie jestem pewien, czy ten stan jest potrzebny. W teorii ma zapobiec chwilowemu wyłaczeniu przekaźnika, bo nie wiadomo jak się wtedy piec zachowa
-                    #cholera wie, czy nie zacznie sie wygaszać, daję sobie 2,5 czasu na ewentualny trigger z dallas przejście do grzania bufora
+                    #cholera wie, czy nie zacznie sie wygaszać, daję sobie 2,5 czasu na ewentualny trigger z dallas_temp przejście do grzania bufora
       on_enter:
         - if:
             condition:
@@ -255,14 +259,15 @@ number:
     max_value: 45
     step: 1
 
-dallas:
-  - pin: GPIO19
-    update_interval: 2s
+one_wire:
+  - platform: gpio
+    pin: GPIO14
+    #update_interval: 2s
   
 sensor:
-  - platform: dallas
+  - platform: dallas_temp
     accuracy_decimals: 1
-    address: 0x3c3c01d607bbfb28
+    #address: 0x3c3c01d607bbfb28
     name: "Bufor gora"
     id: "buffer_temp_top"
     on_value:
@@ -274,9 +279,9 @@ sensor:
         then:
           - state_machine.transition: BUFFER_TEMP_BELOW_MIN
   #####
-  - platform: dallas
+  - platform: dallas_temp
     accuracy_decimals: 1
-    address: 0x2c08222017ed7f28
+    #address: 0x2c08222017ed7f28
     name: "Bufor dol"
     id: "buffer_temp_bottom"
     on_value:
@@ -285,9 +290,9 @@ sensor:
           lambda: 'return id(buffer_temp_bottom).state >= id(buffer_temp_target).state;'
         then:
           - state_machine.transition: BUFFER_TEMP_REACHED
-  - platform: dallas
+  - platform: dallas_temp
     accuracy_decimals: 1
-    address: 0x381268581e64ff28
+    #address: 0x381268581e64ff28
     name: "Zasobnik CWU"
     id: "WH_temp"
     on_value:
@@ -304,25 +309,25 @@ sensor:
 
 switch:
   - platform: gpio
-    pin: GPIO23
+    pin: GPIO32
     name: "Włączanie kotła"
     id: stove_relay
-    inverted: true
-  - platform: gpio
-    pin: GPIO32
-    name: "Grzanie CWU"
-    id: wh_relay #WH = water heater
-    inverted: true
+    #inverted: false
   - platform: gpio
     pin: GPIO33
-    name: "Cyrkulacja CWU"
-    id: hot_water_pump_relay
-    inverted: true
+    name: "Grzanie CWU"
+    id: wh_relay #WH = water heater
+    #inverted: true
   - platform: gpio
     pin: GPIO25
+    name: "Cyrkulacja CWU"
+    id: hot_water_pump_relay
+    #inverted: true
+  - platform: gpio
+    pin: GPIO26
     name: "Pompa obiegowa"
     id: circulation_pump_relay 
-    inverted: true
+    #inverted: true
   - platform: template
     name: "Tryb (Lato/Zima)"
     id: mode_switch
