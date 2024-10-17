@@ -11,8 +11,6 @@ esphome:
 esp32:
   board: esp32dev
 
-#uart:
-#  baud_rate: 115200
 # Enable logging
 logger:
   #level: WARN
@@ -30,12 +28,10 @@ ota:
 packages:
   wifi: !include wifi.yaml
 
-
-
 captive_portal:
-#//
+
 spi:
-  clk_pin: GPIO17 #  sck 
+  clk_pin: GPIO17    #  sck 
   mosi_pin: GPIO23   #  mosi -> SDA(Serial DAta)
   
 font:
@@ -60,17 +56,9 @@ display:
   - platform: ili9xxx
     model: "ST7735"
     cs_pin: GPIO21    #  D21->CS
-    dc_pin: GPIO22    #  D5->A0  
+    dc_pin: GPIO22    #  D22->A0  
     invert_colors: false
-    #reset_pin: D6 #  ->RESET
-    #rotation: 180
-    #device_width: 128
-    #device_height: 160x
-    #col_start: 0
-    #row_start: 0
-    #eight_bit_color: true
-    #show_test_card: true
-    #update_interval: 1s
+
     lambda: |-
       it.printf(0, 0, id(consolas),  "Stan: %s", id(current_state).state.c_str());
       it.printf(0, 9, id(consolas),  "Tryb: %s", id(mode).c_str());
@@ -262,12 +250,13 @@ number:
 one_wire:
   - platform: gpio
     pin: GPIO14
-    #update_interval: 2s
+    
   
 sensor:
   - platform: dallas_temp
+    update_interval: 2s
     accuracy_decimals: 1
-    #address: 0x3c3c01d607bbfb28
+    address: 0x3d0922200f71d728
     name: "Bufor gora"
     id: "buffer_temp_top"
     on_value:
@@ -280,8 +269,9 @@ sensor:
           - state_machine.transition: BUFFER_TEMP_BELOW_MIN
   #####
   - platform: dallas_temp
+    update_interval: 2s
     accuracy_decimals: 1
-    #address: 0x2c08222017ed7f28
+    #address: 0x3d0922200f71d728
     name: "Bufor dol"
     id: "buffer_temp_bottom"
     on_value:
@@ -291,6 +281,7 @@ sensor:
         then:
           - state_machine.transition: BUFFER_TEMP_REACHED
   - platform: dallas_temp
+    update_interval: 2s
     accuracy_decimals: 1
     #address: 0x381268581e64ff28
     name: "Zasobnik CWU"
