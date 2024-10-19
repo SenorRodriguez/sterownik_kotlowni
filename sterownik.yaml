@@ -22,8 +22,7 @@ api:
     key: "skR9b3kg8faCvxnHIbOD6wVlXalUKTOzlHtLhpnUOA8="
 
 ota:
-  - platform: esphome
-    password: "28cf72c4b1505ff8519fee3d866a9d54"
+  password: "28cf72c4b1505ff8519fee3d866a9d54"
 
 packages:
   wifi: !include wifi.yaml
@@ -52,12 +51,20 @@ color:
     green: 100%
     blue: 25%
     white: 0%
+    
 display:
-  - platform: ili9xxx
-    model: "ST7735"
+  - platform: st7735
+    model: "INITR_18BLACKTAB"
     cs_pin: GPIO21    #  D21->CS
-    dc_pin: GPIO22    #  D22->A0  
-    invert_colors: false
+    dc_pin: GPIO22    #  D22->A0 
+    #reset_pin: D6 #  ->RESET
+    rotation: 180
+    device_width: 128
+    device_height: 160
+    col_start: 0
+    row_start: 0
+    eight_bit_color: true
+    update_interval: 1s
 
     lambda: |-
       it.printf(0, 0, id(consolas),  "Stan: %s", id(current_state).state.c_str());
@@ -83,7 +90,7 @@ globals:
     type: std::string
     initial_value: '"LATO"'
   - id: top_up_active
-    type: bool  
+    type: bool    
     initial_value: 'true'
 
 external_components:
@@ -247,16 +254,17 @@ number:
     max_value: 45
     step: 1
 
-one_wire:
-  - platform: gpio
-    pin: GPIO14
+dallas:
+  #- platform: gpio
+  pin: GPIO14
+  update_interval: 2s
     
   
 sensor:
-  - platform: dallas_temp
-    update_interval: 2s
+  - platform: dallas
     accuracy_decimals: 1
-    address: 0x3d0922200f71d728
+    address: 0x3c3c01d607bbfb28
+    # dół bufora ma adres address: 0x3d0922200f71d728
     name: "Bufor gora"
     id: "buffer_temp_top"
     on_value:
@@ -268,10 +276,9 @@ sensor:
         then:
           - state_machine.transition: BUFFER_TEMP_BELOW_MIN
   #####
-  - platform: dallas_temp
-    update_interval: 2s
+  - platform: dallas
     accuracy_decimals: 1
-    #address: 0x3d0922200f71d728
+    address: 0x2c08222017ed7f28
     name: "Bufor dol"
     id: "buffer_temp_bottom"
     on_value:
@@ -280,10 +287,9 @@ sensor:
           lambda: 'return id(buffer_temp_bottom).state >= id(buffer_temp_target).state;'
         then:
           - state_machine.transition: BUFFER_TEMP_REACHED
-  - platform: dallas_temp
-    update_interval: 2s
+  - platform: dallas
     accuracy_decimals: 1
-    #address: 0x381268581e64ff28
+    address: 0x381268581e64ff28
     name: "Zasobnik CWU"
     id: "WH_temp"
     on_value:
@@ -297,10 +303,15 @@ sensor:
             lambda: 'return id(WH_temp).state >= id(WH_temp_target).state;'
           then:
             - state_machine.transition: WH_TEMP_REACHED
+  - platform: dallas
+    accuracy_decimals: 1
+    address: 0x3d0922200f71d728
+    name: "Zasobnik CWU dół"
+    id: "WH_temp_bottom"
 
 switch:
   - platform: gpio
-    pin: GPIO32
+    pin: GPIO25
     name: "Włączanie kotła"
     id: stove_relay
     #inverted: false
@@ -310,7 +321,7 @@ switch:
     id: wh_relay #WH = water heater
     #inverted: true
   - platform: gpio
-    pin: GPIO25
+    pin: GPIO32
     name: "Cyrkulacja CWU"
     id: hot_water_pump_relay
     #inverted: true
