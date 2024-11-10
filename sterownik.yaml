@@ -1,3 +1,4 @@
+#use esphome 2024.5 or lower. As for november 2024 dallas component is still broken in newer versions. 
 esphome:
   name: sterownik_kotla_v2
   on_boot:
@@ -5,7 +6,7 @@ esphome:
   - switch.turn_off: stove_relay
   - switch.turn_off: wh_relay
   - logger.log:
-      format: "FW VERSION: 0.2"
+      format: "FW VERSION: 0.3"
       level: WARN
 
 esp32:
@@ -89,6 +90,7 @@ globals:
   - id: mode
     type: std::string
     initial_value: '"LATO"'
+    restore_value: True
   - id: top_up_active
     type: bool    
     initial_value: 'true'
